@@ -8,15 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
-
-      # 强制更新 llama.cpp 到最新，确保支持 Qwen3.5
-      - name: Update llama.cpp submodule
-        shell: bash
-        run: |
-          cd vendor/llama.cpp
-          git fetch --all
-          git checkout origin/master
+          submodules: recursive  # 拉取自带兼容版本的 llama.cpp，绝不做多余操作
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -29,14 +21,20 @@ jobs:
           cuda: '12.1.0'
 
       - name: Build Wheel
-        shell: cmd
+        shell: pwsh  # 改用 PowerShell 处理环境变量，比 cmd 更稳定
         run: |
           pip install cmake ninja scikit-build-core
-          :: 【关键修改1】强制指定你的 4070 架构（sm_89），防止编译报错
-          set CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=89"
-          :: 【关键修改2】限制并行编译数，防止云端内存溢出被 Kill
-          set CMAKE_BUILD_PARALLEL_LEVEL=2
-          set FORCE_CMAKE=1
+          
+          # 1. 限制并行编译，防止云端 16G 内存溢出被系统 Kill
+          $env:CMAKE_BUILD_PARALLEL_LEVEL="2"
+          
+          # 2. 核心：开启 CUDA，并指定你的 RTX 4070 架构（sm_89）
+          $env:CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=89"
+          
+          # 3. 强制重新配置 CMake
+          $env:FORCE_CMAKE="1"
+          
+          # 4. 开始编译
           pip wheel . --no-deps -w dist
 
       - name: Upload Wheel
